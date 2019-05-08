@@ -7,10 +7,18 @@ list(APPEND CMAKE_MODULE_PATH "${PROJECT_SOURCE_DIR}/cmake")
 find_package(Vulkan REQUIRED)
 find_package(SDL2 REQUIRED)
 
+set(_srcs
+    src/Main.cpp
+    src/AppInit.cpp
+    src/App.h
+)
+
 add_executable(
     Raytracer
-    src/Main.cpp
+	${_srcs}
 )
+
+source_group(TREE "${PROJECT_SOURCE_DIR}" FILES ${_srcs})
 
 target_link_libraries(Raytracer
     PRIVATE
