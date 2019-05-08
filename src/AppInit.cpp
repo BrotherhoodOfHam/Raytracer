@@ -120,8 +120,8 @@ void App::initVulkan()
 
 	// Vulkan instance
 	auto instanceInfo = vk::InstanceCreateInfo()
-		.setEnabledExtensionCount(extensionNames.size())
-		.setEnabledLayerCount(layers.size())
+		.setEnabledExtensionCount((uint32_t)extensionNames.size())
+		.setEnabledLayerCount((uint32_t)layers.size())
 		.setPpEnabledExtensionNames(extensionNames.data())
 		.setPpEnabledLayerNames(layers.data());
 
@@ -309,7 +309,7 @@ void App::draw()
 	v = (v + 1.0) / 2;
 
 	vk::ClearColorValue c;
-	c.float32[0] = v;
+	c.float32[0] = (float)v;
 
 	frame.commandBuffer.clearColorImage(
 		_swapchainImages[imageIndex],
