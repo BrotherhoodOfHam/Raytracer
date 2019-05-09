@@ -3,7 +3,7 @@
 */
 
 #include "SDL_main.h"
-#include "App.h"
+#include "Triangle.h"
 
 #ifdef WIN32
 #define WIN32_LEAN_AND_MEAN
@@ -18,7 +18,7 @@ int main(int argc, char** argv)
 
 	try
 	{
-		App app;
+		Triangle app;
 		app.run();
 	}
 	catch (std::exception e)

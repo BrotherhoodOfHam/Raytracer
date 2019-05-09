@@ -11,39 +11,46 @@
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////
 
-App::App()
-{
-	init();
-}
-
-App::~App()
-{
-	cleanup();
-}
+App::App() { }
+App::~App() { }
 
 void App::run()
 {
-	bool running = true;
-	while (running)
-	{
-		SDL_Event event;
-		while (SDL_PollEvent(&event))
-		{
-			switch (event.type)
-			{
-			case SDL_QUIT:
-				running = false;
-				break;
-			}
-		}
+	baseInit();
 
-		draw();
+	try
+	{
+		bool running = true;
+		while (running)
+		{
+			SDL_Event event;
+			while (SDL_PollEvent(&event))
+			{
+				switch (event.type)
+				{
+				case SDL_QUIT:
+					running = false;
+					break;
+				}
+			}
+
+			nextFrame();
+		}
 	}
+	catch (const std::exception& e)
+	{
+		baseDestroy();
+		throw e;
+	}
+
+	baseDestroy();
 }
 
-void App::cleanup()
+void App::baseDestroy()
 {
 	_device.waitIdle();
+
+	this->destroy();
 
 	for (int i = 0; i < FRAME_COUNT; i++)
 	{
@@ -54,11 +61,6 @@ void App::cleanup()
 	//destroys all allocated command buffers too
 	_device.destroyCommandPool(_commandPool);
 
-	for (const auto& v : _swapchainViews)
-	{
-		_device.destroyImageView(v);
-	}
-
 	_device.destroySwapchainKHR(_swapchain);
 	_instance.destroySurfaceKHR(_surface);
 	_device.destroy();
@@ -68,13 +70,15 @@ void App::cleanup()
 	_instance.destroy();
 }
 
-void App::init()
+void App::baseInit()
 {
 	initSDL();
 	log("SDL initialized successfully.");
 
 	initVulkan();
 	log("Vulkan initialized successfully.");
+
+	this->init();
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -89,8 +93,8 @@ void App::initSDL()
 		"Vulkan Window",
 		SDL_WINDOWPOS_CENTERED,
 		SDL_WINDOWPOS_CENTERED,
-		1280,
-		900,
+		WIN_WIDTH,
+		WIN_HEIGHT,
 		SDL_WINDOW_VULKAN | SDL_WINDOW_ALLOW_HIGHDPI
 	);
 
@@ -223,22 +227,7 @@ void App::initVulkan()
 
 	_swapchain = _device.createSwapchainKHR(swapchainInfo);
 	_swapchainImages = _device.getSwapchainImagesKHR(_swapchain);
-
-	for (const auto& img : _swapchainImages)
-	{
-		vk::ImageSubresourceRange range;
-		range.aspectMask = vk::ImageAspectFlagBits::eColor;
-		range.levelCount = 1;
-		range.layerCount = 1;
-
-		auto info = vk::ImageViewCreateInfo()
-			.setImage(img)
-			.setViewType(vk::ImageViewType::e2D)
-			.setSubresourceRange(range)
-			.setFormat(surfaceFormat.format);
-
-		_swapchainViews.push_back(_device.createImageView(info));
-	}
+	_swapchainFormat = swapchainInfo.imageFormat;
 
 	/*
 		Create command buffers
@@ -259,7 +248,7 @@ void App::initVulkan()
 	}
 }
 
-void App::draw()
+void App::nextFrame()
 {
 	uint32_t index = (_frameIndex++) % FRAME_COUNT;
 	auto& frame = _frames[index];
@@ -270,82 +259,17 @@ void App::draw()
 	uint32_t imageIndex;
 	_device.acquireNextImageKHR(_swapchain, UINT64_MAX, frame.imageAvailable, nullptr, &imageIndex);
 
+	const auto& cmd = frame.commandBuffer;
+
 	vk::CommandBufferBeginInfo beginInfo(vk::CommandBufferUsageFlagBits::eOneTimeSubmit);
-	frame.commandBuffer.begin(beginInfo);
+	cmd.begin(beginInfo);
 
-	//////////////////////////////////////////////////
+	this->render(cmd, imageIndex);
 
-	auto subrscRange = vk::ImageSubresourceRange()
-		.setAspectMask(vk::ImageAspectFlagBits::eColor)
-		.setBaseMipLevel(0)
-		.setLevelCount(VK_REMAINING_MIP_LEVELS)
-		.setBaseArrayLayer(0)
-		.setLayerCount(VK_REMAINING_ARRAY_LAYERS);
-
-	auto imageBarrier = vk::ImageMemoryBarrier(
-		vk::AccessFlags(),
-		vk::AccessFlagBits::eTransferWrite,
-		vk::ImageLayout::eUndefined,
-		vk::ImageLayout::eTransferDstOptimal,
-		_queueFamilyIndex,
-		_queueFamilyIndex,
-		_swapchainImages[imageIndex],
-		subrscRange
-	);
-
-	frame.commandBuffer.pipelineBarrier(
-		vk::PipelineStageFlagBits::eTransfer,
-		vk::PipelineStageFlagBits::eTransfer,
-		vk::DependencyFlags(),
-		0, nullptr, 0, nullptr,
-		1, &imageBarrier
-	);
-
-	//////////////////////////////////////////////////
-
-	auto d = std::chrono::high_resolution_clock::now().time_since_epoch();
-	auto t = std::chrono::duration_cast<std::chrono::milliseconds>(d).count() * 1000;
-	auto v = sin((double)t * 3.14159);
-	v = (v + 1.0) / 2;
-
-	vk::ClearColorValue c;
-	c.float32[0] = (float)v;
-
-	frame.commandBuffer.clearColorImage(
-		_swapchainImages[imageIndex],
-		vk::ImageLayout::eTransferDstOptimal,
-		&c,
-		1,
-		&subrscRange
-	);
-
-	//////////////////////////////////////////////////
-
-	auto newImageBarrier = vk::ImageMemoryBarrier(
-		vk::AccessFlagBits::eTransferWrite,
-		vk::AccessFlagBits::eMemoryRead,
-		vk::ImageLayout::eTransferDstOptimal,
-		vk::ImageLayout::ePresentSrcKHR,
-		_queueFamilyIndex,
-		_queueFamilyIndex,
-		_swapchainImages[imageIndex],
-		subrscRange
-	);
-
-	frame.commandBuffer.pipelineBarrier(
-		vk::PipelineStageFlagBits::eTransfer,
-		vk::PipelineStageFlagBits::eBottomOfPipe,
-		vk::DependencyFlags(),
-		0, nullptr, 0, nullptr,
-		1, &newImageBarrier
-	);
-
-	//////////////////////////////////////////////////
-
-	frame.commandBuffer.end();
+	cmd.end();
 
 	const vk::PipelineStageFlags dstStage[] = { vk::PipelineStageFlagBits::eColorAttachmentOutput };
-
+	
 	auto submitInfo = vk::SubmitInfo()
 		//wait for image
 		.setWaitSemaphoreCount(1)

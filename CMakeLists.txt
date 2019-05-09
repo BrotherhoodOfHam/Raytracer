@@ -9,15 +9,17 @@ find_package(SDL2 REQUIRED)
 
 set(GLSL_VALIDATOR "$ENV{VULKAN_SDK}/Bin/glslangValidator.exe")
 
-set(_srcs
-    src/Main.cpp
-    src/AppInit.cpp
-    src/App.h
-)
-
 set(_shaders
 	shaders/a.vert
 	shaders/a.frag
+)
+
+set(_srcs
+    src/Main.cpp
+    src/App.h
+    src/App.cpp
+	src/Triangle.h
+	src/Triangle.cpp
 )
 
 add_executable(

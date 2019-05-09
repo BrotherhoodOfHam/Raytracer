@@ -7,12 +7,10 @@
 #pragma once
 
 #include <iostream>
-#include <array>
+#include <vector>
 
 //#define VULKAN_HPP_NO_EXCEPTIONS
 #include <vulkan/vulkan.hpp>
-
-/////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 struct SDL_Window;
 
@@ -30,10 +28,9 @@ private:
 	vk::PhysicalDevice     _pdevice;
 	vk::Device             _device;
 	vk::Queue              _queue;
+	uint32_t			   _queueFamilyIndex = 0;
 	std::vector<vk::Image> _swapchainImages;
-	std::vector<vk::ImageView> _swapchainViews;
-
-	uint32_t _queueFamilyIndex = 0;
+	vk::Format             _swapchainFormat;
 
 	enum { FRAME_COUNT = 4 };
 
@@ -49,16 +46,30 @@ private:
 	Frame           _frames[FRAME_COUNT];
 	vk::CommandPool _commandPool;
 
+	enum WindowDimensions
+	{
+		WIN_WIDTH = 1280,
+		WIN_HEIGHT = 900
+	};
+
 public:
 
 	App();
-	~App();
+	virtual ~App();
+
+	App(const App&) = delete;
 
 	// Start application and block until it is stopped
 	void run();
 
-	// Get vulkan device
+	// Get device
 	const vk::Device& device() const { return _device; }
+	// Get swapchain images
+	const std::vector<vk::Image>& swapchainImages() const { return _swapchainImages; }
+	// Get swapchain format
+	vk::Format swapchainFormat() const { return _swapchainFormat; }
+	// Get swapchain width/height
+	vk::Extent2D swapchainSize() const { return vk::Extent2D(WIN_WIDTH, WIN_HEIGHT); }
 
 	// Log 1 or more values
 	template<typename A, typename ... T>
@@ -74,18 +85,22 @@ public:
 		std::cout << std::endl;
 	}
 
-private:
+protected:
 
-	void initSDL();
-	
-	void initVulkan();
-
-	void init();
-
-	void draw();
-
-	void cleanup();
+	//Events
+	virtual void init() = 0;
+	virtual void render(const vk::CommandBuffer& cmd, uint32_t swpIndex) = 0;
+	virtual void destroy() = 0;
 
 	//Utils
 	std::exception error(const char* msg) { return std::exception(msg); }
+
+private:
+
+	void initSDL();
+	void initVulkan();
+
+	void baseInit();
+	void baseDestroy();
+	void nextFrame();
 };
