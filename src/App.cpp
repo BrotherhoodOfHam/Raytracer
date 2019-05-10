@@ -2,7 +2,7 @@
 	Application source
 */
 
-#include <chrono>
+#include <fstream>
 
 #include <SDL.h>
 #include <SDL_vulkan.h>
@@ -292,6 +292,41 @@ void App::nextFrame()
 		.setPImageIndices(&imageIndex);
 
 	_queue.presentKHR(&presentInfo);
+}
+
+///////////////////////////////////////////////////////////////////////////////////////////////////////
+
+bool App::readContent(const char* path, Buffer& out)
+{
+	std::ifstream f(path, std::ios::binary);
+	if (f)
+	{
+		f.unsetf(std::ios::skipws);
+
+		f.seekg(std::ios::end);
+		auto size = f.tellg();
+		f.seekg(std::ios::beg);
+
+		out.reserve(size);
+		out.insert(out.begin(), std::istream_iterator<unsigned char>(f),
+			std::istream_iterator<unsigned char>());
+
+		return true;
+	}
+	return false;
+}
+
+vk::ShaderModule App::loadModule(const char* path)
+{
+	Buffer spirv;
+	if (!readContent(path, spirv))
+		throw std::exception("unable to load shader file");
+
+	return _device.createShaderModule(
+		vk::ShaderModuleCreateInfo()
+		.setPCode((const uint32_t*)spirv.data())
+		.setCodeSize(spirv.size())
+	);
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////

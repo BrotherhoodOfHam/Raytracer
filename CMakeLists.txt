@@ -12,6 +12,8 @@ set(GLSL_VALIDATOR "$ENV{VULKAN_SDK}/Bin/glslangValidator.exe")
 set(_shaders
 	shaders/a.vert
 	shaders/a.frag
+	shaders/quad.vert
+	shaders/trace_sphere.frag
 )
 
 set(_srcs
@@ -20,6 +22,8 @@ set(_srcs
     src/App.cpp
 	src/Triangle.h
 	src/Triangle.cpp
+	src/Raytracer.h
+	src/Raytracer.cpp
 )
 
 add_executable(

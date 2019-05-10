@@ -48,8 +48,8 @@ private:
 
 	enum WindowDimensions
 	{
-		WIN_WIDTH = 1280,
-		WIN_HEIGHT = 900
+		WIN_WIDTH = 800,
+		WIN_HEIGHT = 800
 	};
 
 public:
@@ -92,8 +92,12 @@ protected:
 	virtual void render(const vk::CommandBuffer& cmd, uint32_t swpIndex) = 0;
 	virtual void destroy() = 0;
 
+	using Buffer = std::vector<unsigned char>;
+
 	//Utils
 	std::exception error(const char* msg) { return std::exception(msg); }
+	bool readContent(const char* path, Buffer& out);
+	vk::ShaderModule loadModule(const char* path);
 
 private:
 

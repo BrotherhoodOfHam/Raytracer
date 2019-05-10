@@ -1,15 +1,10 @@
 /*
-	Hello triangle implementation
+	Raytracer implementation
 */
 
-#include <chrono>
-#include <fstream>
+#include "Raytracer.h"
 
-#include "Triangle.h"
-
-//////////////////////////////////////////////////////////////////////////////////////////
-
-void Triangle::init()
+void Raytracer::init()
 {
 	//Render pass
 	vk::AttachmentDescription colourAttachment;
@@ -45,7 +40,7 @@ void Triangle::init()
 		range.aspectMask = vk::ImageAspectFlagBits::eColor;
 		range.levelCount = 1;
 		range.layerCount = 1;
-
+		
 		auto info = vk::ImageViewCreateInfo()
 			.setImage(img)
 			.setViewType(vk::ImageViewType::e2D)
@@ -67,8 +62,8 @@ void Triangle::init()
 	}
 
 	//Shaders
-	auto vertex = loadModule("shaders/a.vert.spv");
-	auto fragment = loadModule("shaders/a.frag.spv");
+	auto vertex = loadModule("shaders/quad.vert.spv");
+	auto fragment = loadModule("shaders/trace_sphere.frag.spv");
 
 	vk::PipelineShaderStageCreateInfo stages[] = {
 		vk::PipelineShaderStageCreateInfo()
@@ -86,7 +81,7 @@ void Triangle::init()
 
 	//Vertex input assembly
 	vk::PipelineInputAssemblyStateCreateInfo assemblyState;
-	assemblyState.topology = vk::PrimitiveTopology::eTriangleList;
+	assemblyState.topology = vk::PrimitiveTopology::eTriangleStrip;
 
 	//Viewport
 	vk::PipelineViewportStateCreateInfo viewportState;
@@ -121,7 +116,7 @@ void Triangle::init()
 	blendState.logicOpEnable = false;
 	blendState.attachmentCount = 1;
 	blendState.pAttachments = &blendAttachState;
-
+	
 	//Dynamic states
 	vk::DynamicState dynamicStates[] = { vk::DynamicState::eViewport, vk::DynamicState::eScissor };
 	vk::PipelineDynamicStateCreateInfo dynamicState;
@@ -159,16 +154,9 @@ void Triangle::init()
 	device().destroyShaderModule(fragment);
 }
 
-void Triangle::render(const vk::CommandBuffer& cmd, uint32_t frame)
+void Raytracer::render(const vk::CommandBuffer& cmd, uint32_t frame)
 {
-	auto d = std::chrono::high_resolution_clock::now().time_since_epoch();
-	auto t = std::chrono::duration_cast<std::chrono::milliseconds>(d).count() * 1000;
-	auto v = sin((double)t * 3.14159);
-	v = (v + 1.0) / 2;
-
-	vk::ClearColorValue c;
-	c.float32[0] = (float)v;
-	vk::ClearValue cv(c);
+	vk::ClearValue cv;
 
 	vk::RenderPassBeginInfo rpBeginInfo;
 	rpBeginInfo.renderPass = _renderPass;
@@ -190,12 +178,12 @@ void Triangle::render(const vk::CommandBuffer& cmd, uint32_t frame)
 	cmd.setScissor(0, 1, &scissor);
 
 	cmd.bindPipeline(vk::PipelineBindPoint::eGraphics, _pipeline);
-	cmd.draw(3, 1, 0, 0);
+	cmd.draw(4, 1, 0, 0);
 
 	cmd.endRenderPass();
 }
 
-void Triangle::destroy()
+void Raytracer::destroy()
 {
 	const auto& d = device();
 	d.destroyRenderPass(_renderPass);
@@ -212,5 +200,3 @@ void Triangle::destroy()
 		d.destroyFramebuffer(f);
 	}
 }
-
-//////////////////////////////////////////////////////////////////////////////////////////

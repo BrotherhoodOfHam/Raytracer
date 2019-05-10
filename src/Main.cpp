@@ -3,7 +3,8 @@
 */
 
 #include "SDL_main.h"
-#include "Triangle.h"
+//#include "Triangle.h"
+#include "Raytracer.h"
 
 #ifdef WIN32
 #define WIN32_LEAN_AND_MEAN
@@ -18,7 +19,7 @@ int main(int argc, char** argv)
 
 	try
 	{
-		Triangle app;
+		Raytracer app;
 		app.run();
 	}
 	catch (std::exception e)
