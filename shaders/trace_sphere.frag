@@ -7,6 +7,12 @@ layout(location = 2) in vec3 ray_dir;
 
 layout(location = 0) out vec4 colour;
 
+layout(binding = 0)
+uniform Uniforms
+{
+	float time;
+} u;
+
 struct Ray
 {
 	vec3 origin;
@@ -55,8 +61,12 @@ vec4 compute_ray(Ray r)
 		vec3 p = r.origin + (r.dir * t);
 		vec3 n = normalize(p - s.center);
 		vec3 l = normalize(vec3(1, -1, 1));
-		float v = dot(n, l);
-		return vec4(0,0,v,1);
+		float vis = dot(n, l);
+
+		//modulate colour
+		float f = 0.5 * (1 + sin(u.time / 1000));
+		
+		return vec4(vis * vec3(0, 1 - f, f), 1);
 	}
 
 	t = intersect_plane(r);

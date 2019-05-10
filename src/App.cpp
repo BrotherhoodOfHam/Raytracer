@@ -329,4 +329,20 @@ vk::ShaderModule App::loadModule(const char* path)
 	);
 }
 
+
+uint32_t App::findMemoryType(uint32_t typeBits, vk::MemoryPropertyFlags properties)
+{
+	vk::PhysicalDeviceMemoryProperties mprops = _pdevice.getMemoryProperties();
+
+	for (uint32_t i = 0; i < mprops.memoryTypeCount; i++)
+	{
+		if (typeBits & (1 << i))
+		{
+			return i;
+		}
+	}
+
+	throw error("Could not find a suitable memory type");
+}
+
 ///////////////////////////////////////////////////////////////////////////////////////////////////////

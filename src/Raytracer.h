@@ -11,15 +11,25 @@ class Raytracer : public App
 	std::vector<vk::ImageView>   _swapchainViews;
 	std::vector<vk::Framebuffer> _framebuffers;
 	vk::RenderPass				 _renderPass;
-	vk::PipelineLayout			 _layout;
+	vk::PipelineLayout			 _pipelineLayout;
 	vk::Pipeline				 _pipeline;
+	vk::DescriptorSetLayout      _descriptorLayout; //uniform descriptor layout
+	vk::DescriptorPool           _descriptorPool;	//uniform descriptor pool
+
+	std::vector<vk::Buffer>        _uniformBuffers;
+	std::vector<vk::DeviceMemory>  _uniformBuffersMemory;
+	std::vector<vk::DescriptorSet> _descriptorSets;
+
+protected:
+
+	void init() override;
+	void render(const vk::CommandBuffer& cmd, uint32_t frame) override;
+	void destroy() override;
+
+private:
 	
-public:
-
-	Raytracer() {}
-	Raytracer(const Raytracer&) = delete;
-
-	virtual void init() override;
-	virtual void render(const vk::CommandBuffer& cmd, uint32_t frame) override;
-	virtual void destroy() override;
+	void initDescriptorPool();
+	void initFrame();
+	void initPipeline();
+	void initResources();
 };

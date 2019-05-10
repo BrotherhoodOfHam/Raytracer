@@ -2,9 +2,42 @@
 	Raytracer implementation
 */
 
+#include <chrono>
+
 #include "Raytracer.h"
 
+////////////////////////////////////////////////////////////////////////////////////////
+
+struct Uniforms
+{
+	float time;
+};
+
+////////////////////////////////////////////////////////////////////////////////////////
+
 void Raytracer::init()
+{
+	initFrame();
+	initDescriptorPool();
+	initPipeline();
+	initResources();
+}
+
+void Raytracer::initDescriptorPool()
+{
+	vk::DescriptorPoolSize poolSize;
+	poolSize.descriptorCount = swapchainCount();
+	poolSize.type = vk::DescriptorType::eUniformBuffer;
+
+	vk::DescriptorPoolCreateInfo info;
+	info.poolSizeCount = 1;
+	info.pPoolSizes = &poolSize;
+	info.maxSets = swapchainCount();
+
+	_descriptorPool = device().createDescriptorPool(info);
+}
+
+void Raytracer::initFrame()
 {
 	//Render pass
 	vk::AttachmentDescription colourAttachment;
@@ -60,7 +93,10 @@ void Raytracer::init()
 
 		_framebuffers.push_back(device().createFramebuffer(fbinfo));
 	}
+}
 
+void Raytracer::initPipeline()
+{
 	//Shaders
 	auto vertex = loadModule("shaders/quad.vert.spv");
 	auto fragment = loadModule("shaders/trace_sphere.frag.spv");
@@ -126,16 +162,31 @@ void Raytracer::init()
 	///////////////////////////////////////////////////////////////////
 
 	//Pipeline layout (uniform layout)
-	vk::PipelineLayoutCreateInfo pipelineLayout;
+	vk::DescriptorSetLayoutBinding bindings[] = {
+		vk::DescriptorSetLayoutBinding()
+			.setBinding(0)
+			.setDescriptorType(vk::DescriptorType::eUniformBuffer)
+			.setDescriptorCount(1)
+			.setStageFlags(vk::ShaderStageFlagBits::eFragment)
+	};
 
-	_layout = device().createPipelineLayout(pipelineLayout);
+	vk::DescriptorSetLayoutCreateInfo descriptorLayout;
+	descriptorLayout.pBindings = bindings;
+	descriptorLayout.bindingCount = 1;
+	_descriptorLayout = device().createDescriptorSetLayout(descriptorLayout);
+
+	vk::PipelineLayoutCreateInfo pipelineLayout;
+	pipelineLayout.pSetLayouts = &_descriptorLayout;
+	pipelineLayout.setLayoutCount = 1;
+
+	_pipelineLayout = device().createPipelineLayout(pipelineLayout);
 
 	///////////////////////////////////////////////////////////////////
 
 	vk::GraphicsPipelineCreateInfo pinfo;
 	pinfo.pStages = stages;
 	pinfo.stageCount = 2;
-	pinfo.layout = _layout;
+	pinfo.layout = _pipelineLayout;
 	pinfo.pColorBlendState = &blendState;
 	pinfo.pInputAssemblyState = &assemblyState;
 	pinfo.pMultisampleState = &multisampling;
@@ -154,8 +205,76 @@ void Raytracer::init()
 	device().destroyShaderModule(fragment);
 }
 
+void Raytracer::initResources()
+{
+	_uniformBuffers.resize(swapchainCount());
+	_uniformBuffersMemory.resize(swapchainCount());
+
+	for (uint32_t i = 0; i < swapchainCount(); i++)
+	{
+		vk::BufferCreateInfo b;
+		b.size = sizeof(Uniforms);
+		b.usage = vk::BufferUsageFlagBits::eUniformBuffer;
+		_uniformBuffers[i] = device().createBuffer(b);
+
+		auto reqs = device().getBufferMemoryRequirements(_uniformBuffers[i]);
+
+		vk::MemoryAllocateInfo alloc;
+		alloc.allocationSize = reqs.size;
+		alloc.memoryTypeIndex = findMemoryType(reqs.memoryTypeBits,
+			vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent);
+
+		_uniformBuffersMemory[i] = device().allocateMemory(alloc);
+
+		device().bindBufferMemory(_uniformBuffers[i], _uniformBuffersMemory[i], 0);
+	}
+
+	std::vector<vk::DescriptorSetLayout> layouts(swapchainCount(), _descriptorLayout);
+	vk::DescriptorSetAllocateInfo allocSet;
+	allocSet.descriptorPool = _descriptorPool;
+	allocSet.descriptorSetCount = swapchainCount();
+	allocSet.pSetLayouts = layouts.data();
+	_descriptorSets = device().allocateDescriptorSets(allocSet);
+
+	for (uint32_t i = 0; i < swapchainCount(); i++)
+	{
+		vk::DescriptorBufferInfo binfo;
+		binfo.buffer = _uniformBuffers[i];
+		binfo.offset = 0;
+		binfo.range = sizeof(Uniforms);
+
+		vk::WriteDescriptorSet write;
+		write.dstSet = _descriptorSets[i];
+		write.dstBinding = 0;
+		write.dstArrayElement = 0;
+		write.descriptorCount = 1;
+		write.descriptorType = vk::DescriptorType::eUniformBuffer;
+		write.pBufferInfo = &binfo;
+
+		device().updateDescriptorSets(
+			vk::ArrayProxy<const vk::WriteDescriptorSet>(write),
+			vk::ArrayProxy<const vk::CopyDescriptorSet>(nullptr)
+		);
+	}
+}
+
+////////////////////////////////////////////////////////////////////////////////////////
+
 void Raytracer::render(const vk::CommandBuffer& cmd, uint32_t frame)
 {
+	//Update uniforms
+	auto time = std::chrono::duration_cast<std::chrono::milliseconds>(
+		std::chrono::high_resolution_clock::now().time_since_epoch()
+	).count();
+	
+	Uniforms u;
+	u.time = (float)(time % 1000000);
+
+	void* ptr = device().mapMemory(_uniformBuffersMemory[frame], 0, sizeof(Uniforms));
+	memcpy(ptr, &u, sizeof(Uniforms));
+	device().unmapMemory(_uniformBuffersMemory[frame]);
+
+	//Begin render pass
 	vk::ClearValue cv;
 
 	vk::RenderPassBeginInfo rpBeginInfo;
@@ -168,6 +287,7 @@ void Raytracer::render(const vk::CommandBuffer& cmd, uint32_t frame)
 
 	cmd.beginRenderPass(rpBeginInfo, vk::SubpassContents::eInline);
 
+	//Update viewport
 	vk::Viewport viewport;
 	viewport.width = (float)swapchainSize().width;
 	viewport.height = (float)swapchainSize().height;
@@ -178,25 +298,32 @@ void Raytracer::render(const vk::CommandBuffer& cmd, uint32_t frame)
 	cmd.setScissor(0, 1, &scissor);
 
 	cmd.bindPipeline(vk::PipelineBindPoint::eGraphics, _pipeline);
+	cmd.bindDescriptorSets(vk::PipelineBindPoint::eGraphics, _pipelineLayout, 0, 1, &_descriptorSets[0], 0, nullptr);
 	cmd.draw(4, 1, 0, 0);
 
 	cmd.endRenderPass();
 }
+
+////////////////////////////////////////////////////////////////////////////////////////
 
 void Raytracer::destroy()
 {
 	const auto& d = device();
 	d.destroyRenderPass(_renderPass);
 
+	d.destroyDescriptorSetLayout(_descriptorLayout);
+	d.destroyDescriptorPool(_descriptorPool);
 	d.destroyPipeline(_pipeline);
-	d.destroyPipelineLayout(_layout);
+	d.destroyPipelineLayout(_pipelineLayout);
 
 	for (const auto& v : _swapchainViews)
-	{
 		d.destroyImageView(v);
-	}
 	for (const auto& f : _framebuffers)
-	{
 		d.destroyFramebuffer(f);
-	}
+	for (const auto& b : _uniformBuffers)
+		d.destroyBuffer(b);
+	for (const auto& b : _uniformBuffersMemory)
+		d.freeMemory(b);
 }
+
+////////////////////////////////////////////////////////////////////////////////////////

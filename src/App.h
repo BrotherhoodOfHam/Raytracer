@@ -66,6 +66,8 @@ public:
 	const vk::Device& device() const { return _device; }
 	// Get swapchain images
 	const std::vector<vk::Image>& swapchainImages() const { return _swapchainImages; }
+	// Get swapchain image count
+	uint32_t swapchainCount() const { return (uint32_t)_swapchainImages.size(); }
 	// Get swapchain format
 	vk::Format swapchainFormat() const { return _swapchainFormat; }
 	// Get swapchain width/height
@@ -98,6 +100,7 @@ protected:
 	std::exception error(const char* msg) { return std::exception(msg); }
 	bool readContent(const char* path, Buffer& out);
 	vk::ShaderModule loadModule(const char* path);
+	uint32_t findMemoryType(uint32_t typeBits, vk::MemoryPropertyFlags properties);
 
 private:
 
