@@ -5,6 +5,7 @@
 #pragma once
 
 #include "App.h"
+#include "Camera.h"
 
 class Raytracer : public App
 {
@@ -20,11 +21,18 @@ class Raytracer : public App
 	std::vector<vk::DeviceMemory>  _uniformBuffersMemory;
 	std::vector<vk::DescriptorSet> _descriptorSets;
 
+	Camera _camera;
+
 protected:
 
 	void init() override;
 	void render(const vk::CommandBuffer& cmd, uint32_t frame) override;
 	void destroy() override;
+
+	void key(const SDL_KeyboardEvent& event) override
+	{
+		_camera.key(event);
+	}
 
 private:
 	

@@ -25,10 +25,12 @@ set(_shaders
 
 set(_srcs
     src/Main.cpp
+	src/Common.h
     src/App.h
     src/App.cpp
 	src/Triangle.h
 	src/Triangle.cpp
+	src/Camera.h
 	src/Raytracer.h
 	src/Raytracer.cpp
 )

@@ -28,6 +28,10 @@ void App::run()
 			{
 				switch (event.type)
 				{
+				case SDL_KEYDOWN:
+				case SDL_KEYUP:
+					key(event.key);
+					break;
 				case SDL_QUIT:
 					running = false;
 					break;

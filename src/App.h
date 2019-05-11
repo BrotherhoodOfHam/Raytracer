@@ -9,8 +9,9 @@
 #include <iostream>
 #include <vector>
 
-//#define VULKAN_HPP_NO_EXCEPTIONS
-#include <vulkan/vulkan.hpp>
+#include <SDL_events.h>
+
+#include "Common.h"
 
 struct SDL_Window;
 
@@ -73,26 +74,13 @@ public:
 	// Get swapchain width/height
 	vk::Extent2D swapchainSize() const { return vk::Extent2D(WIN_WIDTH, WIN_HEIGHT); }
 
-	// Log 1 or more values
-	template<typename A, typename ... T>
-	void log(A&& first, T&& ... rest)
-	{
-		std::cout << first << " ";
-		log(rest...);
-	}
-
-	template<typename ... Types>
-	void log()
-	{
-		std::cout << std::endl;
-	}
-
 protected:
 
 	//Events
 	virtual void init() = 0;
 	virtual void render(const vk::CommandBuffer& cmd, uint32_t swpIndex) = 0;
 	virtual void destroy() = 0;
+	virtual void key(const SDL_KeyboardEvent& event) {}
 
 	using Buffer = std::vector<unsigned char>;
 

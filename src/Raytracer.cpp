@@ -6,10 +6,16 @@
 
 #include "Raytracer.h"
 
+//Maths
+#include <glm/mat4x4.hpp>
+#include <glm/ext/matrix_transform.hpp>
+#include <glm/ext/matrix_clip_space.hpp>
+
 ////////////////////////////////////////////////////////////////////////////////////////
 
 struct Uniforms
 {
+	glm::mat4 camera;
 	float time;
 };
 
@@ -167,7 +173,7 @@ void Raytracer::initPipeline()
 			.setBinding(0)
 			.setDescriptorType(vk::DescriptorType::eUniformBuffer)
 			.setDescriptorCount(1)
-			.setStageFlags(vk::ShaderStageFlagBits::eFragment)
+			.setStageFlags(vk::ShaderStageFlagBits::eAllGraphics)
 	};
 
 	vk::DescriptorSetLayoutCreateInfo descriptorLayout;
@@ -262,14 +268,17 @@ void Raytracer::initResources()
 
 void Raytracer::render(const vk::CommandBuffer& cmd, uint32_t frame)
 {
+	_camera.update();
+
 	//Update uniforms
 	auto time = std::chrono::duration_cast<std::chrono::milliseconds>(
 		std::chrono::high_resolution_clock::now().time_since_epoch()
 	).count();
 	
 	Uniforms u;
+	u.camera = _camera.matrix();
 	u.time = (float)(time % 1000000);
-
+	
 	void* ptr = device().mapMemory(_uniformBuffersMemory[frame], 0, sizeof(Uniforms));
 	memcpy(ptr, &u, sizeof(Uniforms));
 	device().unmapMemory(_uniformBuffersMemory[frame]);
