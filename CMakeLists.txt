@@ -9,6 +9,13 @@ find_package(SDL2 REQUIRED)
 
 set(GLSL_VALIDATOR "$ENV{VULKAN_SDK}/Bin/glslangValidator.exe")
 
+add_library(glm INTERFACE)
+target_include_directories(glm INTERFACE "${PROJECT_SOURCE_DIR}/glm")
+
+#######################################################################################
+# Main program
+#######################################################################################
+
 set(_shaders
 	shaders/a.vert
 	shaders/a.frag
@@ -37,8 +44,10 @@ source_group(TREE "${PROJECT_SOURCE_DIR}" FILES ${_srcs} ${_shaders})
 target_link_libraries(Raytracer
     PRIVATE
       Vulkan::Vulkan
-      SDL2::SDL2main
+	  SDL2::SDL2main
+	  glm
 )
+
 
 add_custom_command(
     TARGET Raytracer
@@ -46,6 +55,9 @@ add_custom_command(
      "${SDL2_RUNTIME_LIBRARY}" "$<TARGET_FILE_DIR:Raytracer>/SDL2.dll"
 )
 
+#######################################################################################
+# Shader compilation
+#######################################################################################
 
 set(_shader_binaries)
 
@@ -68,3 +80,5 @@ add_custom_target(
 )
 
 add_dependencies(Raytracer BUILD_SHADERS)
+
+#######################################################################################
