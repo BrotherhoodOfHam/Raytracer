@@ -94,7 +94,7 @@ void App::initSDL()
 		throw error("Could not initialize SDL");
 
 	_window = SDL_CreateWindow(
-		"Vulkan Window",
+		"Vulkan Raytracer",
 		SDL_WINDOWPOS_CENTERED,
 		SDL_WINDOWPOS_CENTERED,
 		WIN_WIDTH,

@@ -10,6 +10,8 @@ uniform Uniforms
 {
 	mat4 camera;
 	float time;
+	uint framewidth;
+	uint frameheight;
 } u;
 
 layout(location = 0) out vec4 ray_origin;
@@ -28,7 +30,7 @@ void main()
 
 	//Distance from eye to image plane
 	float vfov = 3.14159f / 3; //60 degrees (vertical fov)
-	float aspectRatio = 1.0f;
+	float aspectRatio = float(u.framewidth) / float(u.frameheight);
 	float half_height = tan(vfov * 0.5);
 	float half_width = aspectRatio * half_height;
 	float focalLength = 1.0f / half_height;
@@ -40,6 +42,7 @@ void main()
 	vec4 eye_pos = u.camera * vec4(0, 0, -focalLength, 1);
 	//Ray origin
 	ray_origin = u.camera * vec4(vertex * scale, 0, 1);
+	//ray_origin.y = -ray_origin.y;
 	//Ray direction
 	ray_dir = normalize((ray_origin - eye_pos).xyz);
 

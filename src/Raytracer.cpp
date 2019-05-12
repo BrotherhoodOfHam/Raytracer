@@ -17,6 +17,8 @@ struct Uniforms
 {
 	glm::mat4 camera;
 	float time;
+	uint32_t framewidth;
+	uint32_t frameheight;
 };
 
 ////////////////////////////////////////////////////////////////////////////////////////
@@ -278,6 +280,8 @@ void Raytracer::render(const vk::CommandBuffer& cmd, uint32_t frame)
 	Uniforms u;
 	u.camera = _camera.matrix();
 	u.time = (float)(time % 1000000);
+	u.framewidth = swapchainSize().width;
+	u.frameheight = swapchainSize().height;
 	
 	void* ptr = device().mapMemory(_uniformBuffersMemory[frame], 0, sizeof(Uniforms));
 	memcpy(ptr, &u, sizeof(Uniforms));

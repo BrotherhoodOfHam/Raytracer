@@ -49,7 +49,7 @@ private:
 
 	enum WindowDimensions
 	{
-		WIN_WIDTH = 800,
+		WIN_WIDTH = 1200,
 		WIN_HEIGHT = 800
 	};
 
