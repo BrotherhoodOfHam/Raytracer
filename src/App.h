@@ -8,6 +8,7 @@
 
 #include <iostream>
 #include <vector>
+#include <chrono>
 
 #include <SDL_events.h>
 
@@ -33,6 +34,10 @@ private:
 	std::vector<vk::Image> _swapchainImages;
 	vk::Format             _swapchainFormat;
 
+	//debug
+	vk::DebugReportCallbackEXT _debugReporter;
+	vk::DebugUtilsMessengerEXT _debugMessenger;
+
 	enum { FRAME_COUNT = 4 };
 
 	struct Frame
@@ -49,9 +54,12 @@ private:
 
 	enum WindowDimensions
 	{
-		WIN_WIDTH = 1200,
-		WIN_HEIGHT = 800
+		WIN_WIDTH = 1280,
+		WIN_HEIGHT = 720
 	};
+
+	uint64_t _fps;
+	std::chrono::high_resolution_clock::time_point _lastUpdate;
 
 public:
 

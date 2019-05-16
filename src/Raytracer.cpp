@@ -279,7 +279,7 @@ void Raytracer::render(const vk::CommandBuffer& cmd, uint32_t frame)
 	
 	Uniforms u;
 	u.camera = _camera.matrix();
-	u.time = (float)(time % 1000000);
+	u.time = (float)(time % 1000000000);
 	u.framewidth = swapchainSize().width;
 	u.frameheight = swapchainSize().height;
 	

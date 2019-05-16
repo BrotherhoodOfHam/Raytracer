@@ -24,7 +24,7 @@ int main(int argc, char** argv)
 	}
 	catch (std::exception e)
 	{
-		std::cerr << e.what() << std::endl;
+		Log::error(e.what());
 		return EXIT_FAILURE;
 	}
 

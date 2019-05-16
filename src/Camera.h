@@ -92,7 +92,7 @@ public:
 		if (_acts & FWD)   dir.z += +1;
 		if (_acts & BACK)  dir.z += -1;
 
-		const float deg = angularSpeed * dt;
+		const float deg = angularSpeed * (float)dt;
 
 		if (_acts & RUP)     angleH += deg;
 		if (_acts & RDOWN)   angleH -= deg;
@@ -106,9 +106,9 @@ public:
 		dir = glm::mat3(rot) * dir;
 		dir = (dir.x || dir.y || dir.z) ? glm::normalize(dir) : glm::vec3(0, 0, 0);
 
-		_position += ((float)(speed * dt) * dir);
-		//log("angleH:", angleH, "angleV:", angleV, "\n");
-		//log("camera: (", _position.x, ", ", _position.y, ", ", _position.z, ")");
+		_position += ((float)(speed * (float)dt) * dir);
+		//Log::info("angleH:", angleH, "angleV:", angleV, "\n");
+		//Log::info("camera: (", _position.x, ", ", _position.y, ", ", _position.z, ")");
 	}
 
 private:

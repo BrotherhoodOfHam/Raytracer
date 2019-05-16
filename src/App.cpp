@@ -3,11 +3,38 @@
 */
 
 #include <fstream>
+#include <chrono>
 
 #include <SDL.h>
 #include <SDL_vulkan.h>
 
 #include "App.h"
+
+///////////////////////////////////////////////////////////////////////////////////////////////////////
+
+VkBool32 debugReportCallback(
+	VkDebugReportFlagsEXT                       flags,
+	VkDebugReportObjectTypeEXT                  objectType,
+	uint64_t                                    object,
+	size_t                                      location,
+	int32_t                                     messageCode,
+	const char*                                 pLayerPrefix,
+	const char*                                 pMessage,
+	void*                                       pUserData)
+{
+	Log::info(pLayerPrefix, pMessage);
+	return true;
+}
+
+VkBool32 debugUtilsMessengerCallback(
+	VkDebugUtilsMessageSeverityFlagBitsEXT           messageSeverity,
+	VkDebugUtilsMessageTypeFlagsEXT                  messageTypes,
+	const VkDebugUtilsMessengerCallbackDataEXT*      pCallbackData,
+	void*                                            pUserData)
+{
+	Log::info("debugUtilsMessengerCallback", messageSeverity, messageTypes);
+	return true;
+}
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -20,6 +47,9 @@ void App::run()
 
 	try
 	{
+		using namespace std::chrono;
+		_lastUpdate = high_resolution_clock::now();
+
 		bool running = true;
 		while (running)
 		{
@@ -38,6 +68,16 @@ void App::run()
 				}
 			}
 
+			//Log the number of fps
+			auto now = high_resolution_clock::now();
+			if ((now - _lastUpdate) > duration_cast<high_resolution_clock::duration>(std::chrono::seconds(1)))
+			{
+				Log::info("fps:", _fps);
+				_lastUpdate = now;
+				_fps = 0;
+			}
+
+			_fps++;
 			nextFrame();
 		}
 	}
@@ -52,6 +92,7 @@ void App::run()
 
 void App::baseDestroy()
 {
+	Log::info("destroying instance...");
 	_device.waitIdle();
 
 	this->destroy();
@@ -72,15 +113,16 @@ void App::baseDestroy()
 	SDL_DestroyWindow(_window);
 	SDL_Quit();
 	_instance.destroy();
+	Log::info("instance destroyed");
 }
 
 void App::baseInit()
 {
 	initSDL();
-	log("SDL initialized successfully.");
+	Log::info("SDL initialized successfully.");
 
 	initVulkan();
-	log("Vulkan initialized successfully.");
+	Log::info("Vulkan initialized successfully.");
 
 	this->init();
 }
@@ -112,29 +154,91 @@ void App::initVulkan()
 		Setup vulkan instance
 	*/
 
+	bool debug = true;
+
 	//Get extensions
 	uint32_t extensionCount = 0;
 	if (!SDL_Vulkan_GetInstanceExtensions(_window, &extensionCount, nullptr))
 		throw error("SDL_Vulkan_GetInstanceExtensions failed");
-	std::vector<const char*> extensionNames(extensionCount);
-	if (!SDL_Vulkan_GetInstanceExtensions(_window, &extensionCount, extensionNames.data()))
+	std::vector<const char*> extensions(extensionCount);
+	if (!SDL_Vulkan_GetInstanceExtensions(_window, &extensionCount, extensions.data()))
 		throw error("SDL_Vulkan_GetInstanceExtensions failed");
 
 	//Get layers
 	std::vector<const char*> layers;
-#ifdef _DEBUG
-	layers.push_back("VK_LAYER_LUNARG_standard_validation");
-#endif
+	if (debug)
+	{
+		Log::info("vulkan layers:");
+		for (const auto& layer : vk::enumerateInstanceLayerProperties())
+		{
+			Log::info("layer", layer.layerName, ":", layer.description);
+		}
+
+		Log::info("vulkan extensions:");
+		for (const auto& extension : vk::enumerateInstanceExtensionProperties())
+		{
+			Log::info("ext", extension.extensionName);
+		}
+
+		layers.push_back("VK_LAYER_LUNARG_standard_validation");
+		//layers.push_back("VK_LAYER_LUNARG_api_dump");
+		extensions.push_back("VK_EXT_debug_report");
+		extensions.push_back("VK_EXT_debug_utils");
+	}
 
 	// Vulkan instance
 	auto instanceInfo = vk::InstanceCreateInfo()
-		.setEnabledExtensionCount((uint32_t)extensionNames.size())
+		.setEnabledExtensionCount((uint32_t)extensions.size())
 		.setEnabledLayerCount((uint32_t)layers.size())
-		.setPpEnabledExtensionNames(extensionNames.data())
+		.setPpEnabledExtensionNames(extensions.data())
 		.setPpEnabledLayerNames(layers.data());
 
+	Log::info("Create vulkan instance");
 	_instance = vk::createInstance(instanceInfo);
 
+	if (debug)
+	{
+		try
+		{
+			auto createReporter = (PFN_vkCreateDebugReportCallbackEXT)_instance.getProcAddr("vkCreateDebugReportCallbackEXT");
+			auto debugMessenger = (PFN_vkCreateDebugUtilsMessengerEXT)_instance.getProcAddr("vkCreateDebugUtilsMessengerEXT");
+
+			if (createReporter == nullptr)
+			{
+				Log::warn("could not load function vkCreateDebugReportCallbackEXT");
+			}
+			else
+			{
+				vk::DebugReportCallbackCreateInfoEXT reportInfo;
+				reportInfo.pfnCallback = debugReportCallback;
+				VkResult r = createReporter(_instance, (const VkDebugReportCallbackCreateInfoEXT*)&reportInfo, nullptr, (VkDebugReportCallbackEXT*)&_debugReporter);
+				if (r != VK_SUCCESS)
+				{
+					Log::warn("vkCreateDebugReportCallbackEXT failed", r);
+				}
+			}
+
+			if (debugMessenger == nullptr)
+			{
+				Log::warn("could not load function vkCreateDebugUtilsMessengerEXT");
+			}
+			else
+			{
+				vk::DebugUtilsMessengerCreateInfoEXT utilsInfo;
+				utilsInfo.pfnUserCallback = debugUtilsMessengerCallback;
+				VkResult r = debugMessenger(_instance, (const VkDebugUtilsMessengerCreateInfoEXT*)&utilsInfo, nullptr, (VkDebugUtilsMessengerEXT*)&_debugMessenger);
+				if (r != VK_SUCCESS)
+				{
+					Log::warn("vkCreateDebugUtilsMessengerEXT failed");
+				}
+			}
+		}
+		catch (const std::exception& e)
+		{
+			Log::error(e.what());
+		}
+	}
+	
 	// Create a Vulkan surface for rendering
 	VkSurfaceKHR c_surface;
 	if (!SDL_Vulkan_CreateSurface(_window, _instance, &c_surface))
@@ -153,18 +257,45 @@ void App::initVulkan()
 	//pick physical device
 	for (const auto& pd : _instance.enumeratePhysicalDevices())
 	{
+		auto props = pd.getProperties();
+		Log::info("checking physical device: ", props.deviceName);
+		switch (props.deviceType)
+		{
+		case vk::PhysicalDeviceType::eCpu:
+			Log::info("device type: cpu");
+			break;
+		case vk::PhysicalDeviceType::eDiscreteGpu:
+			Log::info("device type: discrete gpu");
+			break;
+		case vk::PhysicalDeviceType::eIntegratedGpu:
+			Log::info("device type: integrated gpu");
+			break;
+		case vk::PhysicalDeviceType::eVirtualGpu:
+			Log::info("device type: virtual gpu");
+			break;
+		case vk::PhysicalDeviceType::eOther:
+			Log::info("device type: other");
+			break;
+		}
+
 		int i = 0;
 		for (const auto& family : pd.getQueueFamilyProperties())
 		{
-			//If surface is supported by this device
-			if (pd.getSurfaceSupportKHR(i, _surface))
+			Log::info("queue family", i, (uint32_t)family.queueFlags, family.queueCount);
+			
+			auto mask = vk::QueueFlagBits::eGraphics | vk::QueueFlagBits::eTransfer;
+			if ((family.queueFlags & mask) == mask)
 			{
-				_pdevice = pd;
-				_queueFamilyIndex = i;
-				break;
-			}
+				//If surface is supported by this device
+				if (pd.getSurfaceSupportKHR(i, _surface))
+				{
+					_pdevice = pd;
+					_queueFamilyIndex = i;
+					break;
+				}
 
-			i++;
+				i++;
+			}
 		}
 
 		//If a valid queue family was found
