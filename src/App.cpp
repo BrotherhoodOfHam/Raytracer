@@ -12,32 +12,6 @@
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////
 
-VkBool32 debugReportCallback(
-	VkDebugReportFlagsEXT                       flags,
-	VkDebugReportObjectTypeEXT                  objectType,
-	uint64_t                                    object,
-	size_t                                      location,
-	int32_t                                     messageCode,
-	const char*                                 pLayerPrefix,
-	const char*                                 pMessage,
-	void*                                       pUserData)
-{
-	Log::info(pLayerPrefix, pMessage);
-	return true;
-}
-
-VkBool32 debugUtilsMessengerCallback(
-	VkDebugUtilsMessageSeverityFlagBitsEXT           messageSeverity,
-	VkDebugUtilsMessageTypeFlagsEXT                  messageTypes,
-	const VkDebugUtilsMessengerCallbackDataEXT*      pCallbackData,
-	void*                                            pUserData)
-{
-	Log::info("debugUtilsMessengerCallback", messageSeverity, messageTypes);
-	return true;
-}
-
-///////////////////////////////////////////////////////////////////////////////////////////////////////
-
 App::App() { }
 App::~App() { }
 
@@ -109,6 +83,7 @@ void App::baseDestroy()
 	_device.destroySwapchainKHR(_swapchain);
 	_instance.destroySurfaceKHR(_surface);
 	_device.destroy();
+	_debug.destroy();
 
 	SDL_DestroyWindow(_window);
 	SDL_Quit();
@@ -168,18 +143,7 @@ void App::initVulkan()
 	std::vector<const char*> layers;
 	if (debug)
 	{
-		Log::info("vulkan layers:");
-		for (const auto& layer : vk::enumerateInstanceLayerProperties())
-		{
-			Log::info("layer", layer.layerName, ":", layer.description);
-		}
-
-		Log::info("vulkan extensions:");
-		for (const auto& extension : vk::enumerateInstanceExtensionProperties())
-		{
-			Log::info("ext", extension.extensionName);
-		}
-
+		Log::info("running application in debug mode");
 		layers.push_back("VK_LAYER_LUNARG_standard_validation");
 		//layers.push_back("VK_LAYER_LUNARG_api_dump");
 		extensions.push_back("VK_EXT_debug_report");
@@ -193,57 +157,19 @@ void App::initVulkan()
 		.setPpEnabledExtensionNames(extensions.data())
 		.setPpEnabledLayerNames(layers.data());
 
-	Log::info("Create vulkan instance");
+	Log::info("create vulkan instance");
 	_instance = vk::createInstance(instanceInfo);
 
 	if (debug)
 	{
-		try
-		{
-			auto createReporter = (PFN_vkCreateDebugReportCallbackEXT)_instance.getProcAddr("vkCreateDebugReportCallbackEXT");
-			auto debugMessenger = (PFN_vkCreateDebugUtilsMessengerEXT)_instance.getProcAddr("vkCreateDebugUtilsMessengerEXT");
-
-			if (createReporter == nullptr)
-			{
-				Log::warn("could not load function vkCreateDebugReportCallbackEXT");
-			}
-			else
-			{
-				vk::DebugReportCallbackCreateInfoEXT reportInfo;
-				reportInfo.pfnCallback = debugReportCallback;
-				VkResult r = createReporter(_instance, (const VkDebugReportCallbackCreateInfoEXT*)&reportInfo, nullptr, (VkDebugReportCallbackEXT*)&_debugReporter);
-				if (r != VK_SUCCESS)
-				{
-					Log::warn("vkCreateDebugReportCallbackEXT failed", r);
-				}
-			}
-
-			if (debugMessenger == nullptr)
-			{
-				Log::warn("could not load function vkCreateDebugUtilsMessengerEXT");
-			}
-			else
-			{
-				vk::DebugUtilsMessengerCreateInfoEXT utilsInfo;
-				utilsInfo.pfnUserCallback = debugUtilsMessengerCallback;
-				VkResult r = debugMessenger(_instance, (const VkDebugUtilsMessengerCreateInfoEXT*)&utilsInfo, nullptr, (VkDebugUtilsMessengerEXT*)&_debugMessenger);
-				if (r != VK_SUCCESS)
-				{
-					Log::warn("vkCreateDebugUtilsMessengerEXT failed");
-				}
-			}
-		}
-		catch (const std::exception& e)
-		{
-			Log::error(e.what());
-		}
+		_debug.init(_instance);
 	}
 	
 	// Create a Vulkan surface for rendering
 	VkSurfaceKHR c_surface;
 	if (!SDL_Vulkan_CreateSurface(_window, _instance, &c_surface))
 	{
-		throw error("Could not create a Vulkan surface");
+		throw error("could not create a Vulkan surface");
 	}
 	_surface = vk::SurfaceKHR(c_surface);
 

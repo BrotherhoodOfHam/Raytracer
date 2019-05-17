@@ -25,6 +25,7 @@ int main(int argc, char** argv)
 	catch (std::exception e)
 	{
 		Log::error(e.what());
+		std::cin.get();
 		return EXIT_FAILURE;
 	}
 

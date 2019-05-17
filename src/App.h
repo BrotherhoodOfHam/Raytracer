@@ -10,11 +10,11 @@
 #include <vector>
 #include <chrono>
 
+#include <SDL.h>
 #include <SDL_events.h>
 
 #include "Common.h"
-
-struct SDL_Window;
+#include "DebugExt.h"
 
 class App
 {
@@ -33,10 +33,7 @@ private:
 	uint32_t			   _queueFamilyIndex = 0;
 	std::vector<vk::Image> _swapchainImages;
 	vk::Format             _swapchainFormat;
-
-	//debug
-	vk::DebugReportCallbackEXT _debugReporter;
-	vk::DebugUtilsMessengerEXT _debugMessenger;
+	DebugExtension	       _debug;
 
 	enum { FRAME_COUNT = 4 };
 

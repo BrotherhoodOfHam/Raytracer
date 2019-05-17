@@ -25,7 +25,11 @@ set(_shaders
 
 set(_srcs
     src/Main.cpp
+	src/Utils.h
+	src/Utils.cpp
 	src/Common.h
+	src/DebugExt.cpp
+	src/DebugExt.h
     src/App.h
     src/App.cpp
 	src/Triangle.h
