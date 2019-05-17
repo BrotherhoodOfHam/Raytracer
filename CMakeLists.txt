@@ -12,6 +12,9 @@ set(GLSL_VALIDATOR "$ENV{VULKAN_SDK}/Bin/glslangValidator.exe")
 add_library(glm INTERFACE)
 target_include_directories(glm INTERFACE "${PROJECT_SOURCE_DIR}/glm")
 
+add_library(vma INTERFACE)
+target_include_directories(vma INTERFACE "${PROJECT_SOURCE_DIR}/VulkanMemoryAllocator/src")
+
 #######################################################################################
 # Main program
 #######################################################################################
@@ -52,6 +55,7 @@ target_link_libraries(Raytracer
       Vulkan::Vulkan
 	  SDL2::SDL2main
 	  glm
+	  vma
 )
 
 

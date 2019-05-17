@@ -70,7 +70,7 @@ void App::baseDestroy()
 	_device.waitIdle();
 
 	this->destroy();
-
+	
 	for (int i = 0; i < FRAME_COUNT; i++)
 	{
 		_device.destroySemaphore(_frames[i].imageAvailable);
