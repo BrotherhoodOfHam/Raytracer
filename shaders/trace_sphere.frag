@@ -18,6 +18,8 @@ uniform Uniforms
 	uint frameheight;
 } u;
 
+//////////////////////////////////////////////////////////////////////////////////////
+
 struct Ray
 {
 	vec3 origin;
@@ -26,21 +28,23 @@ struct Ray
 
 struct Surface
 {
+	bool hit;
 	vec3 pos;
 	vec3 normal;
-	vec3 colour;
+	vec4 colour;
 };
+
+Ray reflect_ray(Ray ray, Surface sf)
+{
+	vec3 dir = reflect(ray.dir, sf.normal);
+	return Ray(sf.pos + (dir * 0.0001), dir);
+}
 
 struct Sphere
 {
 	vec3 center;
 	float radius;
 };
-
-Ray reflect_ray(Ray ray, Surface s)
-{
-	return Ray(s.pos, reflect(ray.dir, s.normal));
-}
 
 float hit_sphere(Sphere s, Ray ray)
 {
@@ -69,124 +73,105 @@ vec4 chess_pattern(vec2 pos)
 		vec4(1, 1, 1, 1);
 }
 
-vec3 background_colour(Ray r, vec3 l)
+vec4 background_colour(Ray r, vec3 l)
 {
 	float sun = max(0, dot(r.dir, l));
 	vec3 sky = vec3(0.5, 0.6, 0.7) * max(0, -dot(r.dir, vec3(0,1,0)));
-	return sky + (pow(sun, 256) + 0.2 * pow(sun, 2)) * vec3(2.0, 1.6, 1.0);
+	return vec4(sky + (pow(sun, 256) + 0.2 * pow(sun, 2)) * vec3(2.0, 1.6, 1.0), 1);
 }
 
 //////////////////////////////////////////////////////////////////////////////////////
-vec4 compute_ray2(Ray r)
+
+Surface get_surface(Ray r)
 {
-	const float epsilon = 0.00000001;
-	vec3 light = normalize(vec3(1, -1, -1));
-	vec4 backgroundColour = vec4(background_colour(r, light), 1);
+	const float epsilon = 0.0000001;
+	float tnearest = 3.402823466e+38; //float max
+	float t = 0;
 
-	float t = hit_plane(r);
-	if (t > epsilon)
-	{
-		const float fogStart = 15;
-		vec3 p = r.origin + (r.dir * t);
-
-		float dist = distance(r.origin, p);
-		float visibility = (dist > fogStart) ? exp(-(dist - fogStart) * 0.1) : 1.0f;
-
-		if (visibility > epsilon)
-		{
-			return mix(backgroundColour, chess_pattern(p.xz), visibility);
-		}
-	}
-	//no hit
-	return backgroundColour;
-}
-
-vec4 compute_ray3(Ray r)
-{
-	const float epsilon = 0.00000001;
-	vec3 light = normalize(vec3(1, -1, -1));
-	vec4 backgroundColour = vec4(background_colour(r, light), 1);
+	Surface sf;
+	sf.hit = false;
 
 	Sphere s = Sphere(vec3(0, -0.6, 2), 0.5);
-	float t = hit_sphere(s, r);
-	if (t > epsilon)
+	t = hit_sphere(s, r);
+	if (t > epsilon && t < tnearest)
 	{
-		vec3 p = r.origin + (r.dir * t);
-		vec3 n = normalize(p - s.center);
-		//modulate colour
-		float f = 0.5 * (1 + sin(u.time / 1000));
-		vec3 colour = vec3(0, 1 - f, f);
-		
-		//lighting
-		float ambient = 0.2;
-		float diffuse = max(dot(n, light), 0);
-		float spec = 0.5 * pow(max(dot(r.dir, reflect(light, n)), 0), 32);
-		return vec4((ambient + spec + diffuse) * colour, 1);
-	}
-	//no hit
-	return backgroundColour;
-}
-//////////////////////////////////////////////////////////////////////////////////////
-
-vec4 compute_ray(Ray r)
-{
-	const float epsilon = 0.00000001;
-	vec3 light = normalize(vec3(1, -1, -1));
-	vec4 backgroundColour = vec4(background_colour(r, light), 1);
-
-	Sphere s = Sphere(vec3(0, -0.6, 2), 0.5);
-	float t = hit_sphere(s, r);
-	if (t > epsilon)
-	{
-		vec3 p = r.origin + (r.dir * t);
-		vec3 n = normalize(p - s.center);
-		//modulate colour
-		float f = 0.5 * (1 + sin(u.time / 1000));
-		vec3 colour = vec3(0, 1 - f, f);
-		vec3 colour2 = compute_ray2(Ray(p, reflect(r.dir, n))).xyz;
-		colour = mix(colour, colour2, 0.2);
-		
-		//lighting
-		float ambient = 0.2;
-		float diffuse = max(dot(n, light), 0);
-		float spec = 0.5 * pow(max(dot(r.dir, reflect(light, n)), 0), 32);
-		return vec4((ambient + spec + diffuse) * colour, 1);
+		tnearest = t;
+		sf.hit = true;
+		sf.pos = r.origin + (r.dir * t);
+		sf.normal = normalize(sf.pos - s.center);
+		sf.colour = vec4(0.8, 0, 0.5, 1);
 	}
 
 	t = hit_plane(r);
-	if (t > epsilon)
+	if (t > epsilon && t < tnearest)
 	{
-		const float fogStart = 15;
-		vec3 p = r.origin + (r.dir * t);
-		vec3 n = vec3(0, -1, 0);
-		float dist = distance(r.origin, p);
-		float visibility = (dist > fogStart) ? exp(-(dist - fogStart) * 0.1) : 1.0f;
-
-		vec4 colour2 = compute_ray3(Ray(p, reflect(r.dir, n)));
-
-		if (visibility > epsilon)
-		{
-			vec4 colour = chess_pattern(p.xz);
-			colour = mix(colour, colour2, 0.4);
-			return mix(backgroundColour, colour, visibility);
-		}
+		tnearest = t;
+		sf.hit = true;
+		sf.pos = r.origin + (r.dir * t);
+		sf.normal = vec3(0, -1, 0);
+		sf.colour = chess_pattern(sf.pos.xz);
 	}
 
-	//no hit
-	return backgroundColour;
+	return sf;
+}
+
+vec4 shade_surface(Ray r, Surface sf, vec4 inColour, vec3 light, vec4 backgroundColour)
+{
+	//attenuate
+	const float fogStart = 15;
+	float dist = distance(r.origin, sf.pos);
+	float visibility = (dist > fogStart) ? exp(-(dist - fogStart) * 0.1) : 1.0f;
+	//visible threshold
+	if (visibility < 0.0001)
+	{
+		return backgroundColour;
+	}
+
+	//Check if surface is visible from light
+	float shadow = get_surface(Ray(sf.pos + (light * 0.0001), light)).hit ? 0 : 1;
+
+	float ambient = 0.2;
+	float diffuse = max(dot(sf.normal, light), 0);
+	float spec = 0.5 * pow(max(dot(r.dir, reflect(light, sf.normal)), 0), 32);
+
+	vec4 surfaceColour = vec4((ambient + (spec + diffuse * shadow)) * sf.colour.xyz, 1);
+
+	//combine with incoming colour
+	surfaceColour = mix(surfaceColour, inColour, 0.2);
+
+	return mix(backgroundColour, surfaceColour, visibility);
+}
+
+vec4 trace_scene(Ray r)
+{
+	vec3 light = normalize(vec3(sin(0.001*u.time), -0.5, cos(0.001*u.time)));
+	vec4 backgroundColour = background_colour(r, light);
+
+	Surface sf = get_surface(r);
+
+	if (sf.hit)
+	{
+		Ray r2 = reflect_ray(r, sf);
+		Surface sf2 = get_surface(r2);
+
+		vec4 reflectedBackground = background_colour(r2, light);
+		vec4 reflectedColour = reflectedBackground;
+		if (sf2.hit)
+		{
+			reflectedColour = shade_surface(r2, sf2, vec4(1,1,1,1), light, reflectedBackground);
+		}
+		return shade_surface(r,  sf,  reflectedColour, light, backgroundColour);
+	}
+	else
+	{
+		return backgroundColour;
+	}
 }
 
 void main()
 {
-	/*
-	for (uint i = 0; i < 4; i++)
-	{
-		uint a = i % 2;
-		uint b = i / 2;
-	}
-	*/
 	Ray r;
 	r.origin = ray_origin;
 	r.dir = normalize(ray_dir);
-	colour = compute_ray(r);
+	colour = trace_scene(r);
 }
