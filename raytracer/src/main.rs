@@ -6,7 +6,7 @@ use {
     std::{
         sync::Arc,
         iter::Iterator,
-        cell::Cell
+        time::SystemTime
     },
     winit::{
         event_loop::{ EventLoop, ControlFlow },
@@ -17,9 +17,8 @@ use {
         instance::{ Instance, PhysicalDevice },
         device::{ Device, DeviceExtensions },
         swapchain::{ Swapchain, PresentMode, FullscreenExclusive, ColorSpace, SurfaceTransform },
-        buffer::{BufferUsage, ImmutableBuffer},
-        image::{ ImageUsage, SwapchainImage, StorageImage, Dimensions },
-        framebuffer::{Framebuffer, RenderPassAbstract, FramebufferAbstract, RenderPass, SubpassContents },
+        buffer::{ BufferUsage, CpuAccessibleBuffer },
+        image::{ ImageUsage, SwapchainImage },
         sync,
         sync::{ GpuFuture },
         command_buffer::AutoCommandBufferBuilder,
@@ -32,7 +31,8 @@ use {
                 UnsafeDescriptorSetLayout,
             }
         }
-    }
+    },
+    cgmath::{ Matrix4, Vector3, SquareMatrix }
 };
 
 mod cs
@@ -43,12 +43,20 @@ mod cs
     }
 }
 
-fn create_descriptor_sets<W>(images: Vec<Arc<SwapchainImage<W>>>, layout: Arc<UnsafeDescriptorSetLayout>) ->
+#[derive(Clone)]
+struct Uniforms
+{
+    camera: Matrix4<f32>,
+    time:   f32
+}
+
+fn build_descriptor_sets<W, A>(images: Vec<Arc<SwapchainImage<W>>>, buffer: Arc<CpuAccessibleBuffer<Uniforms, A>>, layout: Arc<UnsafeDescriptorSetLayout>) ->
     Vec<Arc<impl DescriptorSet>>
 {
     images.iter().map(|image| {
         Arc::new(PersistentDescriptorSet::start(layout.clone())
             .add_image(image.clone()).unwrap()
+            .add_buffer(buffer.clone()).unwrap()
             .build().unwrap()
         )
     }).collect()
@@ -85,12 +93,12 @@ fn main()
     let caps = surface.capabilities(physical).unwrap();
     let (format, _) = caps.supported_formats[0];
     let alpha = caps.supported_composite_alpha.iter().next().unwrap();
-    let dim = surface.window().inner_size();
+    let frame_dim = surface.window().inner_size();
 
     let (mut swapchain, swapchain_images) = Swapchain::new(
         device.clone(), surface.clone(),
         caps.min_image_count, format,
-        dim.into(), 1, ImageUsage { color_attachment: true, storage: true, ..ImageUsage::none() }, //ImageUsage::color_attachment(),
+        frame_dim.into(), 1, ImageUsage { color_attachment: true, storage: true, ..ImageUsage::none() }, //ImageUsage::color_attachment(),
         &queue.clone(),
         SurfaceTransform::Identity, alpha,
         PresentMode::Fifo, FullscreenExclusive::Default,
@@ -106,9 +114,22 @@ fn main()
     let compute_pipeline = Arc::new(ComputePipeline::new(device.clone(), &cs.main_entry_point(), &()).unwrap());
     let layout = compute_pipeline.layout().descriptor_set_layout(0).unwrap().clone();
 
+    let mut uniforms = Uniforms {
+        camera: Matrix4::from_translation(Vector3::new(0.0, 1.0, 0.0)).invert().unwrap(),
+        time:   0.0
+    };
+
+    let uniform_buffer = CpuAccessibleBuffer::from_data(
+        device.clone(), BufferUsage::uniform_buffer(), false, uniforms.clone()
+    ).unwrap();
+
+    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
     let mut rebuild_swapchain = false;
-    let mut swapchain_descriptor_sets = create_descriptor_sets(swapchain_images, layout.clone());
+    let mut swapchain_descriptor_sets = build_descriptor_sets(swapchain_images, uniform_buffer.clone(), layout.clone());
     let mut end_of_previous_frame = Some(sync::now(device.clone()).boxed());
+
+    let mut start = SystemTime::now();
 
     // event loop
     ev.run(move |event, _, ctrl| {
@@ -125,30 +146,44 @@ fn main()
             },
             Event::RedrawEventsCleared => {
 
+                let now = SystemTime::now();
+                let delta = now.duration_since(start).unwrap();
+                let delta = delta.as_secs() as f64 + delta.subsec_nanos() as f64 * 1e-9;
+                start = now;
+
                 let mut future = end_of_previous_frame.take().unwrap();
                 future.cleanup_finished();
+                
+                let frame_dim = surface.window().inner_size();
 
                 if rebuild_swapchain
                 {
-                    println!("{:?}", surface.window().inner_size());
+                    println!("{:?}", frame_dim);
                     rebuild_swapchain = false;
 
-                    let (s, images) = swapchain.recreate_with_dimensions(surface.window().inner_size().into()).expect("failed to resize swapchain");
+                    let (s, images) = swapchain.recreate_with_dimensions(frame_dim.into()).expect("failed to resize swapchain");
                     swapchain = s;
 
-                    swapchain_descriptor_sets = create_descriptor_sets(images, layout.clone());
+                    swapchain_descriptor_sets = build_descriptor_sets(images, uniform_buffer.clone(), layout.clone());
                 }
 
                 // next frame
                 let (idx, _, acquire_future) = vulkano::swapchain::acquire_next_image(swapchain.clone(), None).unwrap();
 
+                // update state
+                uniforms.time += delta as f32;
+
+                {
+                    let mut write = uniform_buffer.write().expect("gpu locked");
+                    write.camera = uniforms.camera;
+                    write.time = uniforms.time;
+                }
+
                 // build command buffer
                 let cmd = {
 
                     let mut cmd = AutoCommandBufferBuilder::primary_one_time_submit(device.clone(), queue.family()).unwrap();
-    
-                    let dim = surface.window().inner_size();
-                    cmd.dispatch([dim.width / 8, dim.height / 8, 1], compute_pipeline.clone(), swapchain_descriptor_sets[idx].clone(), ()).unwrap();
+                    cmd.dispatch([frame_dim.width / 8, frame_dim.height / 8, 1], compute_pipeline.clone(), swapchain_descriptor_sets[idx].clone(), ()).unwrap();
                     cmd.build()
 
                 }.unwrap();
