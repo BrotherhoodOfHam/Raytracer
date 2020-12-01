@@ -17,8 +17,8 @@ use {
         instance::{ Instance, PhysicalDevice },
         device::{ Device, DeviceExtensions },
         swapchain::{ Swapchain, PresentMode, FullscreenExclusive, ColorSpace, SurfaceTransform },
-        buffer::{ BufferUsage, CpuAccessibleBuffer },
-        image::{ ImageUsage, SwapchainImage },
+        buffer::{ BufferUsage, CpuBufferPool },
+        image::{ ImageUsage },
         sync,
         sync::{ GpuFuture },
         command_buffer::AutoCommandBufferBuilder,
@@ -26,9 +26,7 @@ use {
         descriptor::{
             PipelineLayoutAbstract,
             descriptor_set::{
-                DescriptorSet,
-                PersistentDescriptorSet,
-                UnsafeDescriptorSetLayout,
+                FixedSizeDescriptorSetsPool
             }
         }
     },
@@ -48,18 +46,6 @@ struct Uniforms
 {
     camera: Matrix4<f32>,
     time:   f32
-}
-
-fn build_descriptor_sets<W, A>(images: Vec<Arc<SwapchainImage<W>>>, buffer: Arc<CpuAccessibleBuffer<Uniforms, A>>, layout: Arc<UnsafeDescriptorSetLayout>) ->
-    Vec<Arc<impl DescriptorSet>>
-{
-    images.iter().map(|image| {
-        Arc::new(PersistentDescriptorSet::start(layout.clone())
-            .add_image(image.clone()).unwrap()
-            .add_buffer(buffer.clone()).unwrap()
-            .build().unwrap()
-        )
-    }).collect()
 }
 
 fn main()
@@ -95,7 +81,7 @@ fn main()
     let alpha = caps.supported_composite_alpha.iter().next().unwrap();
     let frame_dim = surface.window().inner_size();
 
-    let (mut swapchain, swapchain_images) = Swapchain::new(
+    let (mut swapchain, mut swapchain_images) = Swapchain::new(
         device.clone(), surface.clone(),
         caps.min_image_count, format,
         frame_dim.into(), 1, ImageUsage { color_attachment: true, storage: true, ..ImageUsage::none() }, //ImageUsage::color_attachment(),
@@ -119,16 +105,13 @@ fn main()
         time:   0.0
     };
 
-    let uniform_buffer = CpuAccessibleBuffer::from_data(
-        device.clone(), BufferUsage::uniform_buffer(), false, uniforms.clone()
-    ).unwrap();
+    let uniform_buffers: CpuBufferPool<Uniforms> = CpuBufferPool::new(device.clone(), BufferUsage::uniform_buffer());
+    let mut descriptor_pool = FixedSizeDescriptorSetsPool::new(layout.clone());
 
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
     let mut rebuild_swapchain = false;
-    let mut swapchain_descriptor_sets = build_descriptor_sets(swapchain_images, uniform_buffer.clone(), layout.clone());
     let mut end_of_previous_frame = Some(sync::now(device.clone()).boxed());
-
     let mut start = SystemTime::now();
 
     // event loop
@@ -161,40 +144,59 @@ fn main()
                     println!("{:?}", frame_dim);
                     rebuild_swapchain = false;
 
-                    let (s, images) = swapchain.recreate_with_dimensions(frame_dim.into()).expect("failed to resize swapchain");
+                    let (s, i) = swapchain.recreate_with_dimensions(frame_dim.into()).expect("failed to resize swapchain");
                     swapchain = s;
-
-                    swapchain_descriptor_sets = build_descriptor_sets(images, uniform_buffer.clone(), layout.clone());
+                    swapchain_images = i;
                 }
 
                 // next frame
-                let (idx, _, acquire_future) = vulkano::swapchain::acquire_next_image(swapchain.clone(), None).unwrap();
+                let (idx, _, acquire_future) = match vulkano::swapchain::acquire_next_image(swapchain.clone(), None) {
+                    Ok(r) => r,
+                    Err(vulkano::swapchain::AcquireError::OutOfDate) => {
+                        rebuild_swapchain = true;
+                        return;
+                    },
+                    Err(err) => panic!("{:?}", err)
+                };
 
                 // update state
                 uniforms.time += delta as f32;
 
-                {
-                    let mut write = uniform_buffer.write().expect("gpu locked");
-                    write.camera = uniforms.camera;
-                    write.time = uniforms.time;
-                }
+                // update uniform buffer
+                let buffer = uniform_buffers.next(uniforms.clone()).unwrap();
+
+                // descriptor set
+                let set = descriptor_pool.next()
+                    .add_image(swapchain_images[idx].clone()).unwrap()
+                    .add_buffer(buffer.clone()).unwrap()
+                    .build().unwrap();
 
                 // build command buffer
                 let cmd = {
-
                     let mut cmd = AutoCommandBufferBuilder::primary_one_time_submit(device.clone(), queue.family()).unwrap();
-                    cmd.dispatch([frame_dim.width / 8, frame_dim.height / 8, 1], compute_pipeline.clone(), swapchain_descriptor_sets[idx].clone(), ()).unwrap();
+                    cmd.dispatch([frame_dim.width / 8, frame_dim.height / 8, 1], compute_pipeline.clone(), set, ()).unwrap();
                     cmd.build()
-
                 }.unwrap();
 
                 let future = future
                     .join(acquire_future)
                     .then_execute(queue.clone(), cmd).expect("failed to execute command buffer")
                     .then_swapchain_present(queue.clone(), swapchain.clone(), idx)
-                    .then_signal_fence_and_flush().expect("failed to flush");
+                    .then_signal_fence_and_flush();
 
-                end_of_previous_frame = Some(future.boxed());
+                end_of_previous_frame = match future {
+                    Ok(future) => {
+                        Some(future.boxed())
+                    },
+                    Err(sync::FlushError::OutOfDate) => {
+                        rebuild_swapchain = true;
+                        Some(sync::now(device.clone()).boxed())
+                    },
+                    Err(e) => {
+                        println!("{:?}", e);
+                        Some(sync::now(device.clone()).boxed())
+                    }
+                };
             },
             _ => {}
         }
