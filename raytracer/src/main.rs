@@ -1,7 +1,8 @@
-
 mod surface;
+mod camera;
 
 use {
+    camera::Camera,
     surface::{ VkSurfaceBuild, required_extensions },
     std::{
         sync::Arc,
@@ -30,7 +31,9 @@ use {
             }
         }
     },
-    cgmath::{ Matrix4, Vector3, SquareMatrix }
+    cgmath::{
+        Matrix4
+    }
 };
 
 mod cs
@@ -90,8 +93,7 @@ fn main()
         PresentMode::Fifo, FullscreenExclusive::Default,
         true, ColorSpace::SrgbNonLinear
     ).unwrap();
-    
-    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
 
     std::assert!(caps.supported_usage_flags.storage);
     
@@ -100,20 +102,18 @@ fn main()
     let compute_pipeline = Arc::new(ComputePipeline::new(device.clone(), &cs.main_entry_point(), &()).unwrap());
     let layout = compute_pipeline.layout().descriptor_set_layout(0).unwrap().clone();
 
-    let mut uniforms = Uniforms {
-        camera: Matrix4::from_translation(Vector3::new(0.0, 1.0, 0.0)).invert().unwrap(),
-        time:   0.0
-    };
-
     let uniform_buffers: CpuBufferPool<Uniforms> = CpuBufferPool::new(device.clone(), BufferUsage::uniform_buffer());
     let mut descriptor_pool = FixedSizeDescriptorSetsPool::new(layout.clone());
 
-    //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    // state
+    let mut camera = Camera::new();
+    let mut time = 0.0;
+
 
     let mut rebuild_swapchain = false;
     let mut end_of_previous_frame = Some(sync::now(device.clone()).boxed());
     let mut start = SystemTime::now();
-
+    
     // event loop
     ev.run(move |event, _, ctrl| {
         match event
@@ -124,6 +124,9 @@ fn main()
                 },
                 WindowEvent::Resized(_) => {
                     rebuild_swapchain = true;
+                },
+                WindowEvent::KeyboardInput { input, .. } => {
+                    camera.handle_input(&input);
                 },
                 _ => {}
             },
@@ -160,10 +163,14 @@ fn main()
                 };
 
                 // update state
-                uniforms.time += delta as f32;
+                time += delta as f32;
+                camera.update(delta);
 
                 // update uniform buffer
-                let buffer = uniform_buffers.next(uniforms.clone()).unwrap();
+                let buffer = uniform_buffers.next(Uniforms {
+                    camera: camera.transform(),
+                    time
+                }).unwrap();
 
                 // descriptor set
                 let set = descriptor_pool.next()
