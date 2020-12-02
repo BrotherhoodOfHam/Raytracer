@@ -47,7 +47,7 @@ mod cs
 #[derive(Clone)]
 struct Uniforms
 {
-    camera: Matrix4<f32>,
+    camera_to_world: Matrix4<f32>,
     time:   f32
 }
 
@@ -164,11 +164,11 @@ fn main()
 
                 // update state
                 time += delta as f32;
-                camera.update(delta);
+                camera.update(delta as f32);
 
                 // update uniform buffer
                 let buffer = uniform_buffers.next(Uniforms {
-                    camera: camera.transform(),
+                    camera_to_world: camera.transform(),
                     time
                 }).unwrap();
 

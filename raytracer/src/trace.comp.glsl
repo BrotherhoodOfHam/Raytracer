@@ -7,7 +7,7 @@ layout(set = 0, binding = 0, rgba8) uniform writeonly image2D img;
 layout(set = 0, binding = 1) uniform Uniforms
 {
     // screen to world matrix
-	mat4 camera;
+	mat4 cameraToWorld;
     // current time
 	float time;
 };
@@ -176,21 +176,17 @@ void main()
 	float half_width = aspectRatio * half_height;
 	float focalLength = 1.0f / half_height;
 
-	// screen scale
-	vec2 scale = vec2(half_width, half_height);
-
     // image plane position
-    vec2 image_pos = gl_GlobalInvocationID.xy / vec2(dim); // [0,1]
-    image_pos = (image_pos - vec2(0.5)) * vec2(2.0);       // [-1,1]   
-    image_pos = image_pos * scale;
-
-	// eye position
-	vec3 eye_pos = (camera * vec4(0, 0, -focalLength, 1)).xyz;
+    vec2 image_pos = gl_GlobalInvocationID.xy / vec2(dim);   // [0,1]
+    image_pos = (image_pos - vec2(0.5)) * vec2(2.0);         // [-1,1]
+    image_pos = image_pos * (vec2(half_width, half_height)); // scale to camera dimensions
+	
+	vec3 world_pos = (cameraToWorld * vec4(image_pos, focalLength, 1)).xyz;
 
 	Ray r;
-	r.origin = (camera * vec4(image_pos, 0, 1)).xyz;
-	r.dir = normalize(r.origin - eye_pos);
-
+    r.origin = (cameraToWorld * vec4(0, 0, 0, 1)).xyz; // eye position
+	r.dir = normalize(world_pos - r.origin);
+	
 	vec4 colour = trace_scene(r);
     imageStore(img, ivec2(gl_GlobalInvocationID.xy), colour);
 }
