@@ -23,6 +23,9 @@ struct Ray
 struct Surface
 {
 	int hit;
+	float alpha;
+	float refractive_index;
+
 	vec3 pos;
 	vec3 normal;
 	vec4 colour;
@@ -49,7 +52,9 @@ float hit_sphere(Sphere s, Ray ray)
 	//discriminant = b^2 - 4ac
 	float dsc = b*b - (4 * a * c);
 	//solve quadratic formula
-	return (dsc < 0) ? -1 : (-b - sqrt(dsc)) / (2 * a);
+	return (dsc < 0)
+		? -1
+		: (-b - sqrt(dsc)) / (2 * a);
 }
 
 float hit_plane(Ray r)
@@ -85,7 +90,28 @@ Surface get_surface(Ray r)
 	Surface sf;
 	sf.hit = 0;
 
-	Sphere s = Sphere(vec3(0, -0.6, 2), 0.5);
+	Sphere s0 = Sphere(vec3(4, -1.5, 2), 1.5);
+	t = hit_sphere(s0, r);
+	if (t > epsilon && t < tnearest)
+	{
+		tnearest = t;
+		sf.hit = 1;
+		sf.pos = r.origin + (r.dir * t);
+		sf.normal = normalize(sf.pos - s0.center);
+		sf.colour = vec4(0.1, 0.4, 0.5, 1);
+	}
+
+	Sphere s1 = Sphere(vec3(-3, -1, 2), 1);
+	t = hit_sphere(s1, r);
+	if (t > epsilon && t < tnearest)
+	{
+		tnearest = t;
+		sf.hit = 1;
+		sf.pos = r.origin + (r.dir * t);
+		sf.normal = normalize(sf.pos - s1.center);
+	}
+
+	Sphere s = Sphere(vec3(0, -0.5, 2), 0.5);
 	t = hit_sphere(s, r);
 	if (t > epsilon && t < tnearest)
 	{
@@ -93,7 +119,19 @@ Surface get_surface(Ray r)
 		sf.hit = 1;
 		sf.pos = r.origin + (r.dir * t);
 		sf.normal = normalize(sf.pos - s.center);
-		sf.colour = vec4(0.8, 0, 0.5, 1);
+
+		// normal is also position
+		vec3 d = sf.normal;
+		float u = 0.5 + (atan(d.x, d.z) / (2 * 3.14159));
+		float v = 0.5 - (asin(d.y) / 3.14159);
+		if ((abs(mod(u, 0.25)) < 0.01) || (abs(mod(v, 0.5)) < 0.01))
+		{
+			sf.colour = vec4(1,1,1,1);
+		}
+		else
+		{
+			sf.colour = vec4(u, v, 0, 1);
+		}
 	}
 
 	t = hit_plane(r);
