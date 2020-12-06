@@ -1,10 +1,10 @@
 mod surface;
 mod camera;
-mod vk;
+mod loader;
 
 use {
     camera::Camera,
-    vk::Vk,
+    loader::Vk,
     std::{
         sync::Arc,
         time::SystemTime
