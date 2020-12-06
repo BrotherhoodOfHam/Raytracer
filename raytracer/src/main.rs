@@ -15,7 +15,7 @@ use {
         window::{ WindowBuilder }
     },
     vulkano::{
-        buffer::{ BufferUsage, CpuBufferPool },
+        buffer::{ BufferUsage, CpuBufferPool, ImmutableBuffer },
         command_buffer::AutoCommandBufferBuilder,
         pipeline::{ ComputePipeline },
         descriptor::{
@@ -25,7 +25,10 @@ use {
             }
         }
     },
-    cgmath::{ Matrix4 }
+    cgmath::{
+        Matrix4, Vector3, Vector4,
+        vec3, vec4
+    }
 };
 
 mod cs
@@ -37,10 +40,41 @@ mod cs
 }
 
 #[derive(Clone)]
-struct Uniforms
+struct Globals
 {
     camera_to_world: Matrix4<f32>,
     time:   f32
+}
+
+#[derive(Clone)]
+struct Sphere
+{
+    center:   Vector3<f32>,
+    radius:   f32,
+    material: i32,
+    padding:  [i32;3]
+}
+
+impl Sphere
+{
+    fn new(center: Vector3<f32>, radius: f32, material: i32) -> Self
+    {
+        Sphere { center, radius, material, padding: [0,0,0] }
+    }
+}
+
+#[derive(Clone)]
+struct Material
+{
+    diffuse_colour: Vector4<f32>
+}
+
+impl Material
+{
+    fn new(diffuse_colour: Vector4<f32>) -> Self
+    {
+        Self { diffuse_colour }
+    }
 }
 
 fn main()
@@ -54,7 +88,25 @@ fn main()
     let compute_pipeline = Arc::new(ComputePipeline::new(vk.device.clone(), &cs.main_entry_point(), &()).unwrap());
     let layout = compute_pipeline.layout().descriptor_set_layout(0).unwrap().clone();
 
-    let uniform_buffers: CpuBufferPool<Uniforms> = CpuBufferPool::new(vk.device.clone(), BufferUsage::uniform_buffer());
+    let scene = [
+        Sphere::new(vec3( 4.0, -1.5, 2.0), 1.5, 0),
+        Sphere::new(vec3( 0.0, -0.5, 2.0), 0.5, 1),
+        Sphere::new(vec3(-3.0, -1.0, 2.0), 1.0, 2)
+    ];
+
+    let materials = [
+        Material::new(vec4(1.0, 0.2, 0.1, 1.0)),
+        Material::new(vec4(0.5, 1.0, 0.2, 1.0)),
+        Material::new(vec4(0.1, 0.1, 1.0, 1.0))
+    ];
+
+    let (scene, materials) = {
+        let (scene, _) = ImmutableBuffer::from_data(scene, BufferUsage::uniform_buffer(), vk.queue.clone()).unwrap();
+        let (materials, _) = ImmutableBuffer::from_data(materials, BufferUsage::uniform_buffer(), vk.queue.clone()).unwrap();
+        (scene, materials)
+    };
+
+    let globals_pool = CpuBufferPool::new(vk.device.clone(), BufferUsage::uniform_buffer());
     let mut descriptor_pool = FixedSizeDescriptorSetsPool::new(layout.clone());
 
     // state
@@ -93,7 +145,7 @@ fn main()
                 let frame = vk.next_frame();
 
                 // update uniform buffer
-                let buffer = uniform_buffers.next(Uniforms {
+                let globals = globals_pool.next(Globals {
                     camera_to_world: camera.transform(),
                     time
                 }).unwrap();
@@ -101,7 +153,9 @@ fn main()
                 // descriptor set
                 let set = descriptor_pool.next()
                     .add_image(frame.image.clone()).unwrap()
-                    .add_buffer(buffer.clone()).unwrap()
+                    .add_buffer(globals.clone()).unwrap()
+                    .add_buffer(scene.clone()).unwrap()
+                    .add_buffer(materials.clone()).unwrap()
                     .build().unwrap();
 
                 let [width, height] = frame.image.dimensions();

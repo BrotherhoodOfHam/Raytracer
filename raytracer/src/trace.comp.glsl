@@ -1,5 +1,7 @@
 #version 450
 
+#define MAX_OBJECTS 5
+
 layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
 
 layout(set = 0, binding = 0, rgba8) uniform writeonly image2D img;
@@ -12,6 +14,28 @@ layout(set = 0, binding = 1) uniform Uniforms
 	float time;
 };
 
+struct Sphere
+{
+	vec3  center;
+	float radius;
+	int   materialIndex;
+};
+
+layout(set = 0, binding = 2) uniform Scene
+{
+	Sphere scene[MAX_OBJECTS];
+};
+
+struct Material
+{
+	vec4 colour;
+};
+
+layout(set = 0, binding = 3) uniform Materials
+{
+	Material materials[MAX_OBJECTS];
+};
+
 //////////////////////////////////////////////////////////////////////////////////////
 
 struct Ray
@@ -22,12 +46,11 @@ struct Ray
 
 struct Surface
 {
-	int hit;
-	float alpha;
-	float refractive_index;
-
+	int  hit;
+	int  materialIndex;
 	vec3 pos;
 	vec3 normal;
+	vec2 uv;
 	vec4 colour;
 };
 
@@ -36,12 +59,6 @@ Ray reflect_ray(Ray ray, Surface sf)
 	vec3 dir = reflect(ray.dir, sf.normal);
 	return Ray(sf.pos + (dir * 0.0001), dir);
 }
-
-struct Sphere
-{
-	vec3 center;
-	float radius;
-};
 
 float hit_sphere(Sphere s, Ray ray)
 {
@@ -85,56 +102,31 @@ Surface get_surface(Ray r)
 {
 	const float epsilon = 0.0000001;
 	float tnearest = 3.402823466e+38; //float max
-	float t = 0;
-
+	
 	Surface sf;
 	sf.hit = 0;
 
-	Sphere s0 = Sphere(vec3(4, -1.5, 2), 1.5);
-	t = hit_sphere(s0, r);
-	if (t > epsilon && t < tnearest)
+	for (int i = 0; i < scene.length(); i++)
 	{
-		tnearest = t;
-		sf.hit = 1;
-		sf.pos = r.origin + (r.dir * t);
-		sf.normal = normalize(sf.pos - s0.center);
-		sf.colour = vec4(0.1, 0.4, 0.5, 1);
-	}
-
-	Sphere s1 = Sphere(vec3(-3, -1, 2), 1);
-	t = hit_sphere(s1, r);
-	if (t > epsilon && t < tnearest)
-	{
-		tnearest = t;
-		sf.hit = 1;
-		sf.pos = r.origin + (r.dir * t);
-		sf.normal = normalize(sf.pos - s1.center);
-	}
-
-	Sphere s = Sphere(vec3(0, -0.5, 2), 0.5);
-	t = hit_sphere(s, r);
-	if (t > epsilon && t < tnearest)
-	{
-		tnearest = t;
-		sf.hit = 1;
-		sf.pos = r.origin + (r.dir * t);
-		sf.normal = normalize(sf.pos - s.center);
-
-		// normal is also position
-		vec3 d = sf.normal;
-		float u = 0.5 + (atan(d.x, d.z) / (2 * 3.14159));
-		float v = 0.5 - (asin(d.y) / 3.14159);
-		if ((abs(mod(u, 0.25)) < 0.01) || (abs(mod(v, 0.5)) < 0.01))
+		Sphere obj = scene[i];
+		float t = hit_sphere(obj, r);
+		if (t > epsilon && t < tnearest)
 		{
-			sf.colour = vec4(1,1,1,1);
-		}
-		else
-		{
-			sf.colour = vec4(u, v, 0, 1);
+			tnearest = t;
+
+			sf.hit = 1;
+			sf.materialIndex = obj.materialIndex;
+			sf.pos = r.origin + (r.dir * t);
+			sf.normal = normalize(sf.pos - obj.center);
+
+			float u = 0.5 + (atan(sf.normal.x, sf.normal.z) / (2 * 3.14159));
+			float v = 0.5 - (asin(sf.normal.y) / 3.14159);
+			sf.uv = vec2(u, v);
+			sf.colour = materials[obj.materialIndex].colour;
 		}
 	}
 
-	t = hit_plane(r);
+	float t = hit_plane(r);
 	if (t > epsilon && t < tnearest)
 	{
 		tnearest = t;
@@ -150,7 +142,7 @@ Surface get_surface(Ray r)
 vec4 shade_surface(Ray r, Surface sf, vec4 inColour, vec3 light, vec4 backgroundColour)
 {
 	//attenuate
-	const float fogStart = 15;
+	const float fogStart = 25;
 	float dist = distance(r.origin, sf.pos);
 	float visibility = (dist > fogStart) ? exp(-(dist - fogStart) * 0.1) : 1.0f;
 	//visible threshold
@@ -164,8 +156,8 @@ vec4 shade_surface(Ray r, Surface sf, vec4 inColour, vec3 light, vec4 background
 
 	float ambient = 0.2;
 	float diffuse = max(dot(sf.normal, light), 0);
-	float spec = 0.5 * pow(max(dot(r.dir, reflect(light, sf.normal)), 0), 32);
-
+	float spec = 0.5 * pow(max(dot(r.dir, reflect(light, sf.normal)), 0), 64);
+	
 	vec4 surfaceColour = vec4((ambient + ((spec + diffuse) * shadow)) * sf.colour.xyz, 1);
 
 	//combine with incoming colour

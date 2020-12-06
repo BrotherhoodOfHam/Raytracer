@@ -20,7 +20,9 @@ use {
 
 pub struct Vk
 {
+    #[allow(dead_code)]
     instance:          Arc<Instance>,
+    
     pub device:        Arc<Device>,
     pub queue:         Arc<Queue>,
     pub surface:       Arc<Surface<Window>>,
