@@ -1,6 +1,7 @@
 mod surface;
 mod camera;
 mod loader;
+mod shaders;
 
 use {
     camera::Camera,
@@ -30,14 +31,6 @@ use {
         vec3, vec4
     }
 };
-
-mod cs
-{
-    vulkano_shaders::shader! {
-        ty: "compute",
-        path: "src/trace.comp.glsl"
-    }
-}
 
 #[derive(Clone)]
 struct Globals
@@ -83,9 +76,11 @@ fn main()
     let window = WindowBuilder::new().build(&ev).unwrap();
     let mut vk = Vk::new(window);
     
-    let cs = cs::Shader::load(vk.device.clone()).expect("failed to load shader");
+    let cs = shaders::cs::Shader::load(vk.device.clone()).expect("failed to load shader");
 
-    let compute_pipeline = Arc::new(ComputePipeline::new(vk.device.clone(), &cs.main_entry_point(), &()).unwrap());
+    let compute_pipeline = Arc::new(
+        ComputePipeline::new(vk.device.clone(), &cs.main_entry_point(), &()).unwrap()
+    );
     let layout = compute_pipeline.layout().descriptor_set_layout(0).unwrap().clone();
 
     let scene = [

@@ -1,6 +1,6 @@
 #version 450
 
-#define MAX_OBJECTS 5
+#define MAX_OBJECTS 3
 
 layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
 
@@ -18,7 +18,7 @@ struct Sphere
 {
 	vec3  center;
 	float radius;
-	int   materialIndex;
+	int   material_idx;
 };
 
 layout(set = 0, binding = 2) uniform Scene
@@ -47,7 +47,8 @@ struct Ray
 struct Surface
 {
 	int  hit;
-	int  materialIndex;
+	int  material_idx;
+	int  is_inside;
 	vec3 pos;
 	vec3 normal;
 	vec2 uv;
@@ -115,14 +116,14 @@ Surface get_surface(Ray r)
 			tnearest = t;
 
 			sf.hit = 1;
-			sf.materialIndex = obj.materialIndex;
+			sf.material_idx = obj.material_idx;
 			sf.pos = r.origin + (r.dir * t);
 			sf.normal = normalize(sf.pos - obj.center);
 
 			float u = 0.5 + (atan(sf.normal.x, sf.normal.z) / (2 * 3.14159));
 			float v = 0.5 - (asin(sf.normal.y) / 3.14159);
 			sf.uv = vec2(u, v);
-			sf.colour = materials[obj.materialIndex].colour;
+			sf.colour = materials[obj.material_idx].colour;
 		}
 	}
 
@@ -135,6 +136,8 @@ Surface get_surface(Ray r)
 		sf.normal = vec3(0, -1, 0);
 		sf.colour = chess_pattern(sf.pos.xz);
 	}
+
+	sf.is_inside = (dot(r.dir, sf.normal) > 0) ? 1 : 0;
 
 	return sf;
 }
